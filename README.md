@@ -1,26 +1,33 @@
-# HTL Pairwise Ranking
+# HTL Bayesian Ranking
 
-Perovskite Hole Transport Layer (HTL) ranking prediction model based on Graph Transformer.
+Perovskite Hole Transport Layer (HTL) ranking prediction model based on Graphormer and Bayesian Ranking.
 
 ## Project Overview
 
-This project uses deep learning methods to predict the performance ranking of hole transport layer materials in perovskite solar cells. It adopts a siamese network architecture, combining molecular graph features and additional molecular descriptors, and learns material performance ranking through pairwise comparison.
+This project uses deep learning methods to predict the performance ranking of hole transport layer materials in perovskite solar cells. It adopts a Graphormer architecture combined with Bayesian ranking (Bradley-Terry model), encoding molecular structures through Graph Transformer and learning material performance ranking via probabilistic pairwise comparison.
 
 ### Model Architecture
 
 ```
-SMILES → Graph Transformer → mol_emb [H] ─┐
+SMILES → GraphormerEncoder → mol_emb [H] ─┐
 extra_features [E] ───────────┼─ concat → FFN → score
 global_features [G] ──────────┘
 ```
 
-- **Graph Transformer**: Graph Transformer network for encoding molecular structures
+- **GraphormerEncoder**: Graph Transformer network with spatial encoding, degree encoding, and edge encoding for molecular structure representation
 - **extra_features**: Molecule-level additional features (e.g., HOMO, TPSA, MolLogP, etc.)
 - **global_features**: Global features (e.g., MO_ITO), shared per sample pair
 
+### Graphormer Encoding Features
+
+- **Centrality Encoding**: Degree-based atom feature projection
+- **Spatial Encoding**: Shortest path distance bias for each attention head
+- **Edge Encoding**: Mean bond features along shortest paths
+- **Virtual Node Readout**: [CLS] node or mean/sum aggregation for graph-level representation
+
 ## Feature Description
 
-### Molecular Features (EXTRA\_COLS)
+### Molecular Features (EXTRA_COLS)
 
 Additional features for each molecule (with `_1` or `_2` suffix):
 
@@ -39,7 +46,7 @@ Additional features for each molecule (with `_1` or `_2` suffix):
 | surface\_min/max | Molecular surface ESP minimum/maximum |
 | PSA              | Polar surface area           |
 
-### Global Features (GLOBAL\_COLS)
+### Global Features (GLOBAL_COLS)
 
 | Feature Name | Description                        |
 | ------------ | ---------------------------------- |
@@ -48,7 +55,7 @@ Additional features for each molecule (with `_1` or `_2` suffix):
 ## Install Dependencies
 
 ```bash
-pip install torch rdkit pandas numpy scikit-learn scipy chemprop>=2.0.0
+pip install torch rdkit pandas numpy scikit-learn scipy
 ```
 
 ## Data Format
@@ -77,7 +84,7 @@ Materials,SMILES,Alkyl,TailSym,...,MO_ITO
 ### Training the Model
 
 ```bash
-python htl_ranking.py --mode train --csv htl-data-combinations.csv
+python htl_ranking_graphormer.py --mode train --csv htl-data-combinations.csv
 ```
 
 Optional parameters:
@@ -86,14 +93,19 @@ Optional parameters:
 - `--batch_size`: Batch size (default 32)
 - `--lr`: Learning rate (default 5e-4)
 - `--hidden_size`: Hidden layer dimension (default 300)
-- `--depth`: MPNN depth (default 6)
+- `--num_heads`: Number of attention heads (default 6)
+- `--depth`: Transformer depth (default 3)
 - `--dropout`: Dropout rate (default 0.1)
 - `--patience`: Early stopping patience (default 50)
+- `--max_degree`: Maximum degree for centrality encoding (default 20)
+- `--max_dist`: Maximum distance for spatial encoding (default 10)
+- `--split`: Data split method (random/group, default random)
+- `--n_cv_folds`: Number of cross-validation folds (for group split)
 
 ### Fine-tuning the Model
 
 ```bash
-python htl_ranking.py --mode finetune \
+python htl_ranking_graphormer.py --mode finetune \
     --csv htl-data-combinations.csv \
     --checkpoint checkpoints/best_model.pt \
     --finetune_epochs 10 \
@@ -103,7 +115,7 @@ python htl_ranking.py --mode finetune \
 ### Pairwise Prediction
 
 ```bash
-python htl_ranking.py --mode predict \
+python htl_ranking_graphormer.py --mode predict \
     --predict_csv htl-new.csv \
     --checkpoint checkpoints/final_model.pt \
     --output predictions.csv
@@ -112,10 +124,30 @@ python htl_ranking.py --mode predict \
 ### List Ranking Prediction
 
 ```bash
-python htl_ranking.py --mode list_rank \
+python htl_ranking_graphormer.py --mode list_rank \
     --predict_csv ranking-new.csv \
     --checkpoint checkpoints/final_model.pt \
     --output ranked_results.csv
+```
+
+### Explanation Analysis
+
+```bash
+python htl_ranking_graphormer.py --mode explain \
+    --explain_csv ranking-new.csv \
+    --checkpoint checkpoints/final_model.pt \
+    --explain_dir explain_output \
+    --n_steps 100
+```
+
+### Differential Attribution Analysis
+
+```bash
+python htl_ranking_graphormer.py --mode diff_attr \
+    --diff_csv htl-new.csv \
+    --checkpoint checkpoints/final_model.pt \
+    --diff_dir diff_output \
+    --n_steps 100
 ```
 
 ## Model Configuration
@@ -125,9 +157,12 @@ python htl_ranking.py --mode list_rank \
 | Parameter      | Default | Description              |
 | -------------- | ------- | ------------------------ |
 | hidden\_size   | 300     | Hidden layer dimension   |
-| depth          | 6       | Transformer depth        |
+| depth          | 3       | Transformer depth        |
+| num\_heads     | 6       | Number of attention heads |
 | dropout        | 0.1     | Dropout rate             |
 | ffn\_hidden    | 256     | FFN hidden layer dimension |
+| max\_degree    | 20      | Maximum degree for centrality encoding |
+| max\_dist      | 10      | Maximum distance for spatial encoding |
 | extra\_dim     | 13      | Additional feature dimension |
 | global\_dim    | 1       | Global feature dimension |
 | num\_tasks     | 1       | Number of tasks          |
@@ -142,23 +177,38 @@ python htl_ranking.py --mode list_rank \
 | lr              | 5e-4    | Learning rate                 |
 | weight\_decay   | 1e-5    | Weight decay                  |
 | patience        | 50      | Early stopping patience       |
+| early\_stop\_warmup | 100 | Warmup epochs before early stopping |
 | val\_ratio      | 0.1     | Validation set ratio          |
 | test\_ratio     | 0.1     | Test set ratio                |
-| margin          | 0.2     | Margin Ranking Loss margin    |
+| split           | random  | Data split method (random/group) |
+| n\_cv\_folds    | 5       | Number of CV folds (for group split) |
 
 ## Loss Function
 
-The model uses a combined loss:
+The model uses a Bayesian Ranking Loss (Bradley-Terry sigmoid model) combined with regression loss:
 
-1. **Margin Ranking Loss**: `L_rank = ReLU(margin - sign(y1-y2) * (s1-s2))`
+1. **Bayesian Ranking Loss**: `L_bayes = -log sigma(sign(y1-y2) * (s1-s2))`
+   - Based on Bradley-Terry model: `P(i > j) = sigma(s1 - s2)`
+   - Provides natural probability calibration
+   - No margin hyperparameter needed
+   - Smooth gradients for stable training
+
 2. **Delta Regression Loss**: `L_reg = MSE(s1-s2, y1-y2)`
 
-总损失: `L = α * L_rank + β * L_reg` (默认 α=0.6, β=0.4)
+Total loss: `L = L_bayes + L_reg`
+
+### Advantages of Bayesian Ranking
+
+- **Probabilistic interpretation**: Output represents ranking probability
+- **Natural calibration**: Sigmoid function provides well-calibrated probabilities
+- **Smooth gradients**: No zero-gradient issues compared to ReLU-based margin loss
+- **No margin tuning**: Eliminates need for margin hyperparameter selection
 
 ## Evaluation Metrics
 
 - **Pairwise Accuracy**: Pairwise ranking accuracy
 - **Spearman ρ**: Spearman correlation coefficient
+- **Test Metrics**: Comprehensive metrics logged during training
 
 ## Output Files
 
@@ -166,36 +216,35 @@ The model uses a combined loss:
 - `checkpoints/final_model.pt`: Final model
 - `predictions.csv`: Prediction results
 - `ranked_results.csv`: Ranking results
+- `explain_output/`: Explanation analysis results
+- `diff_output/`: Differential attribution results
 
 ## Project Structure
 
 ```
-htl_pairwise_ranking/
-├── htl_ranking.py          # 主程序
-├── htl-data-combinations.csv  # 训练数据
-├── htl-new.csv             # 预测数据
-├── ranking-new.csv         # 排序数据
-├── checkpoints/            # 模型保存目录
+htl_bayesian_ranking_graphormer/
+├── htl_ranking_graphormer.py    # Main program
+├── htl_package/                 # Core modules
+│   ├── configs.py               # Configuration classes
+│   ├── training.py              # Training and fine-tuning
+│   ├── prediction.py            # Prediction and ranking
+│   └── explainer.py             # IGExplainer for attribution
+├── htl-data-combinations.csv    # Training data
+├── htl-new.csv                  # Prediction data
+├── ranking-new.csv              # Ranking data
+├── checkpoints/                 # Model checkpoints
 │   ├── best_model.pt
 │   └── final_model.pt
-├── predictions.csv         # 预测输出
-└── ranked_results.csv      # 排序输出
+├── predictions.csv              # Prediction output
+├── ranked_results.csv           # Ranking output
+├── explain_output/              # Explanation results
+└── diff_output/                 # Differential attribution results
 ```
 
 ## Python API Usage
 
 ```python
-from htl_ranking import predict_pair, predict_batch, predict_list
-
-# Single pair prediction
-result = predict_pair(
-    smiles_1="COc1ccc2c(c1)c1cc(OC)ccc1n2CCP(=O)(O)O",
-    smiles_2="COc1ccc2c(c1)sc1c3ccc(CCCCP(=O)(O)O)cc3sc21",
-    extra_raw_1=extra_features_1,
-    extra_raw_2=extra_features_2,
-    checkpoint_path="checkpoints/final_model.pt",
-    global_feat=np.array([[1.0]]),  # MO_ITO=1
-)
+from htl_package.prediction import predict_batch, predict_list
 
 # Batch prediction
 df_result = predict_batch(
@@ -209,7 +258,5 @@ df_ranked = predict_list(
     df_list=df,
     checkpoint_path="checkpoints/final_model.pt",
     output_path="ranked.csv",
-    global_feat=np.array([[1.0]]),
 )
 ```
-
