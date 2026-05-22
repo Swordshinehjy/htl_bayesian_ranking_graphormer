@@ -1,10 +1,10 @@
-# HTL Bayesian Ranking
+# HTL Bayesian Personalized Ranking
 
-Perovskite Hole Transport Layer (HTL) ranking prediction model based on Graphormer and Bayesian Ranking.
+Perovskite Hole Transport Layer (HTL) ranking prediction model based on Graphormer and Bayesian Personalized Ranking.
 
 ## Project Overview
 
-This project uses deep learning methods to predict the performance ranking of hole transport layer materials in perovskite solar cells. It adopts a Graphormer architecture combined with Bayesian ranking (Bradley-Terry model), encoding molecular structures through Graph Transformer and learning material performance ranking via probabilistic pairwise comparison.
+This project uses deep learning methods to predict the performance ranking of hole transport layer materials in perovskite solar cells. It adopts a Graphormer architecture combined with Bayesian Personalized Ranking (Bradley-Terry model), encoding molecular structures through Graph Transformer and learning material performance ranking via probabilistic pairwise comparison.
 
 ### Model Architecture
 
@@ -185,9 +185,9 @@ python htl_ranking_graphormer.py --mode diff_attr \
 
 ## Loss Function
 
-The model uses a Bayesian Ranking Loss (Bradley-Terry sigmoid model) combined with regression loss:
+The model uses a Bayesian Personalized Ranking Loss (Bradley-Terry sigmoid model) combined with regression loss:
 
-1. **Bayesian Ranking Loss**: `L_bayes = -log sigma(sign(y1-y2) * (s1-s2))`
+1. **Bayesian Personalized Ranking Loss**: `L_bayes = -log sigma(sign(y1-y2) * (s1-s2))`
    - Based on Bradley-Terry model: `P(i > j) = sigma(s1 - s2)`
    - Provides natural probability calibration
    - No margin hyperparameter needed
@@ -197,7 +197,7 @@ The model uses a Bayesian Ranking Loss (Bradley-Terry sigmoid model) combined wi
 
 Total loss: `L = L_bayes + L_reg`
 
-### Advantages of Bayesian Ranking
+### Advantages of Bayesian Personalized Ranking
 
 - **Probabilistic interpretation**: Output represents ranking probability
 - **Natural calibration**: Sigmoid function provides well-calibrated probabilities

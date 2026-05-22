@@ -2,7 +2,7 @@
 Perovskite HTL Prediction — Graphormer Version
 Pipeline:
   1. Custom 2D Graph Transformer encoding + additional feature concatenation
-  2. Bayesian Ranking Loss (Bradley-Terry sigmoid model)
+  2. Bayesian Personalized Ranking Loss (Bradley-Terry sigmoid model)
 
 Architecture Changes (compared to D-MPNN version):
   - Completely removed chemprop dependency, using RDKit + scipy + pure PyTorch implementation
@@ -16,7 +16,7 @@ Architecture Changes (compared to D-MPNN version):
       · Molecular graphs are precomputed once during Dataset initialization (shortest paths, mean bond path features, etc.)
       · collate_mol_graphs handles padding and concatenation into MolBatch tensors
   - Atom IG in IGExplainer changed to compute gradients on MolBatch.atom_feats
-  - Bayesian Ranking Loss → Bradley-Terry sigmoid model
+  - Bayesian Personalized Ranking Loss → Bradley-Terry sigmoid model
       · P(i > j) = sigma(s1 - s2)  (sigmoid)
       · L_bayes = -log sigma( sign(y1 - y2) * (s1 - s2) )
       · L_reg  = MSE(s1 - s2,  y1 - y2)
@@ -36,7 +36,7 @@ if __name__ == "__main__":
     import pandas as pd
 
     p = argparse.ArgumentParser(
-        description="HTL Bayesian Ranking via Graphormer")
+        description="HTL Bayesian Personalized Ranking via Graphormer")
     p.add_argument("--mode",
                    choices=[
                        "train", "predict", "finetune", "list_rank", "explain",
@@ -216,7 +216,7 @@ if __name__ == "__main__":
 """
 # Usage Examples (Command Line)
 
-# Training (Bayesian Ranking, Bradley-Terry sigmoid model)
+# Training (Bayesian Personalized Ranking, Bradley-Terry sigmoid model)
 python htl_ranking_graphormer.py --mode train --csv htl-data-combinations.csv --hidden_size 300 --num_heads 6 --depth 3
 
 # Training (group split + LOGO CV)
